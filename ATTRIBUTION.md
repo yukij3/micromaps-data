@@ -18,6 +18,7 @@ Contour lines and elevation grids are computed from Terrain Tiles by Mapzen, hos
   Inc., imagery and funded under National Science Foundation awards 1043681, 1559691, and 1542736.
 - GMTED2010: data courtesy of the U.S. Geological Survey.
 - SRTM: data courtesy of NASA and the U.S. Geological Survey.
+- EU-DEM: produced using Copernicus data and information funded by the European Union.
 - ETOPO1: data courtesy of the NOAA National Centers for Environmental Information.
 - Full list of providers: https://github.com/tilezen/joerd/blob/master/docs/attribution.md
 

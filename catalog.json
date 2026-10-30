@@ -1,15 +1,33 @@
 {
  "v": 1,
  "n": [
+  "Elbrus",
+  "Kr. Polyana",
   "Lovozero"
  ],
  "p": [
+  "packs/elbrus/2026-10-30",
+  "packs/kr-polyana/2026-10-30",
   "packs/lovozero/2026-10-30"
  ],
  "k": [
+  26,
+  39,
   15
  ],
  "packs": [
+  {
+   "id": "elbrus",
+   "title": "Elbrus",
+   "path": "packs/elbrus/2026-10-30",
+   "kb": 26,
+   "date": "2026-10-30",
+   "terrain": "EU-DEM, SRTM",
+   "lat": 43.3,
+   "lon": 42.4,
+   "w": 10000,
+   "h": 10000
+  },
   {
    "id": "khibiny",
    "title": "Khibiny",
@@ -19,6 +37,18 @@
    "terrain": "ArcticDEM, GMTED2010",
    "lat": 67.59,
    "lon": 33.58,
+   "w": 10000,
+   "h": 10000
+  },
+  {
+   "id": "kr-polyana",
+   "title": "Kr. Polyana",
+   "path": "packs/kr-polyana/2026-10-30",
+   "kb": 39,
+   "date": "2026-10-30",
+   "terrain": "EU-DEM, SRTM",
+   "lat": 43.63,
+   "lon": 40.22,
    "w": 10000,
    "h": 10000
   },
