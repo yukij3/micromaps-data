@@ -6,7 +6,7 @@ name: build-blocks
 on:
   schedule:
     # off the round minutes: GitHub drops scheduled runs under load, and the top of the hour is the worst
-    - cron: "7,22,37,52 * * * *"
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       ids:
