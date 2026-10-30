@@ -11,7 +11,8 @@ https://yukij3.github.io/micromaps-data/
   - `4k/`, `2k/`: the same data cut into groups for download by the watch
 - Format: [FORMAT.md](FORMAT.md). Reader: `tools/decode.py` (`python3 -m tools.decode packs/khibiny/2026-10-28`
   from the repository root; `dem.py` is its helper for the elevation grids).
-- Blocks built on request: `blocks/index.json` lists them, each one is in `blocks/<id>/`
+- Blocks built on request: `blocks/index.json` lists them, each one is in `blocks/<id>/`. The workflow
+  `build-blocks` builds them with the code in `builder/`.
 
 A published pack directory never changes. A new snapshot is a new `<date>`.
 
@@ -32,5 +33,5 @@ Map data © OpenStreetMap contributors, https://www.openstreetmap.org/copyright
 
 See [ATTRIBUTION.md](ATTRIBUTION.md) for the terrain sources of each area.
 
-The page (`index.html`, `app.js`, `style.css`, `blocks.js`, `route/`) and the tools in `tools/` are MIT licensed. `vendor/` holds Leaflet 1.9.4 from
+The page (`index.html`, `app.js`, `style.css`, `blocks.js`, `route/`) the tools in `tools/` and the builder in `builder/` are MIT licensed. `vendor/` holds Leaflet 1.9.4 from
 npm, under its BSD-2 licence ([vendor/LICENSE-leaflet.txt](vendor/LICENSE-leaflet.txt)).

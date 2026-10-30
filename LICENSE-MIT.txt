@@ -1,4 +1,4 @@
-Applies to index.html, app.js, style.css, blocks.js, route/ and tools/. vendor/ has its own licence. The data in packs/ and blocks/ is under the ODbL, see README.md.
+Applies to index.html, app.js, style.css, blocks.js, route/, tools/ and builder/. vendor/ has its own licence. The data in packs/ and blocks/ is under the ODbL, see README.md.
 
 MIT License
 

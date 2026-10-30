@@ -17,7 +17,7 @@
       notbuilt: "A request publishes this block in the open data for good, with no name attached.",
       lowzoom: "Zoom in to place the block before you request it.",
       building: "Requested at {time}. It usually takes up to about an hour. You can close this page.",
-      slow: "Requested at {time}. This is taking longer than usual: each hourly run builds a limited number of blocks.",
+      slow: "Requested at {time}. This is taking longer than usual: each run builds a limited number of blocks.",
       expired: "The request from {time} brought no block. You can send it again.",
       empty: "There is no map data here, so there is nothing to build.",
       dense20: "Too much map for the watch at 20 km. Try 10 km.",
@@ -68,7 +68,7 @@
   const RECHECK_MS = 120000;
   const RETURN_GAP_MS = 20000;
   const SLOW_MS = 90 * 60000;
-  const REQUEST_LIFE_MS = 13 * 3600000;   // ntfy keeps a message 12 h, the job runs hourly
+  const REQUEST_LIFE_MS = 13 * 3600000;   // ntfy keeps a message 12 h
   const SEARCH_GAP_MS = 1100;             // Nominatim: at most one request a second
   const FETCH_TIMEOUT_MS = 15000;
   const PICK_ZOOM = 9;                    // below this a block is too small to aim

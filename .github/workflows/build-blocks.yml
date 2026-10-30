@@ -1,0 +1,101 @@
+# Builds the map blocks people asked for and keeps them in this repository (BLOCKS in FORMAT.md,
+# docs/BLOCKS.md upstream). An empty queue ends right after the poll, which needs nothing but the
+# stock python3 of the runner.
+name: build-blocks
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: Block ids, on top of the queue
+        required: false
+        default: ""
+
+concurrency:
+  group: build-blocks
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # read by the script itself: the input never goes through a shell
+      BLOCK_IDS: ${{ github.event.inputs.ids }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Poll the queue
+        id: poll
+        run: |
+          # on its own line: inside echo a crash would read as an empty queue
+          ids=$(python3 builder/scripts/build_blocks.py --poll --repo . --max-run 4 --max-day 40)
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v5
+        if: steps.poll.outputs.ids != ''
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.poll.outputs.ids != ''
+        run: pip install -r builder/pipeline/requirements.txt
+
+      - name: Build
+        if: steps.poll.outputs.ids != ''
+        run: python3 builder/scripts/build_blocks.py --repo . --pending "$RUNNER_TEMP/pending.json" --raw "$RUNNER_TEMP/raw" --max-run 4 --max-day 40
+
+      # the packs first: index.json names the commit that added them, a jsDelivr link needs it
+      - name: Publish the packs
+        if: steps.poll.outputs.ids != ''
+        run: |
+          git config user.name "microMAPS builder"
+          git config user.email "trdimads@gmail.com"
+          git add blocks
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Blocks: build $GITHUB_RUN_ID"
+          for try in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep $((try * 10))
+            git pull --rebase origin main
+          done
+          exit 1
+
+      - name: Publish the index
+        if: steps.poll.outputs.ids != ''
+        run: |
+          # read after the push: a rebase there changes the commit
+          sha=$(git rev-parse --short=10 HEAD)
+          for try in 1 2 3 4 5; do
+            git pull --rebase origin main
+            python3 builder/scripts/build_blocks.py --repo . --apply "$RUNNER_TEMP/pending.json" --commit "$sha"
+            git add blocks/index.json
+            if git diff --cached --quiet; then
+              exit 0
+            fi
+            git commit -m "Blocks: index of build $GITHUB_RUN_ID"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            # the next pull starts from the remote again, the index is rewritten on top of it
+            git reset --hard HEAD~1
+            sleep $((try * 10))
+          done
+          exit 1
+
+      # a push made with GITHUB_TOKEN may not start a Pages build by itself
+      - name: Update Pages
+        if: steps.poll.outputs.ids != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" || true
