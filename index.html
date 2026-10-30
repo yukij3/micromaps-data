@@ -2,54 +2,212 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>microMAPS: maps and routes</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { font: 17px/1.45 -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 34rem; padding: 1.2rem; }
-  h1 { font-size: 1.5rem; margin: 0 0 .4rem; }
-  h2 { font-size: 1.1rem; margin: 1.4rem 0 .3rem; }
-  table { border-collapse: collapse; width: 100%; }
-  td, th { text-align: left; padding: .3rem .4rem .3rem 0; vertical-align: top; }
-  .small { font-size: .9rem; opacity: .8; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Pick a block of map anywhere in the world for the microMAPS app on Garmin Instinct 3 Solar, and add a GPX route.">
+<title>microMAPS: maps and routes for Instinct 3 Solar</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23fff' d='M0 0h16v16H0z'/%3E%3Cpath d='M1 1h14v14H1zm3 3v8h8V4z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<h1>microMAPS</h1>
-<p>Offline maps and routes for Garmin Instinct 3 Solar. No account, no app on the phone besides Garmin's own.</p>
 
-<h2>Get a map</h2>
-<p>On the watch: hold UP, open Maps, pick an area and press START. The watch downloads it through Garmin Connect
-on the phone, so keep Garmin Connect running and the screen on Maps until it finishes.</p>
-<table id="list"><tr><td>Loading the list</td></tr></table>
+<main id="stage">
+  <div id="map" role="application" aria-label="Map. Arrow keys move it, plus and minus zoom. The block follows the middle of the map."></div>
+  <div id="cross" aria-hidden="true"></div>
 
-<h2>Add a route</h2>
-<p><a href="route/">Turn a GPX file into a route code.</a> The file stays on your phone.</p>
+  <header class="brand">
+    <h1>
+      <svg viewBox="0 0 59 7" width="177" height="21" role="img" aria-label="microMAPS"><path d="M0 2h7v1h-7zM0 3h2v1h-2zM3 3h2v1h-2zM6 3h2v1h-2zM0 4h2v1h-2zM3 4h2v1h-2zM6 4h2v1h-2zM0 5h2v1h-2zM3 5h2v1h-2zM6 5h2v1h-2zM0 6h2v1h-2zM3 6h2v1h-2zM6 6h2v1h-2zM9 0h2v1h-2zM9 2h2v1h-2zM9 3h2v1h-2zM9 4h2v1h-2zM9 5h2v1h-2zM9 6h2v1h-2zM13 2h4v1h-4zM12 3h2v1h-2zM12 4h2v1h-2zM12 5h2v1h-2zM13 6h4v1h-4zM18 2h2v1h-2zM21 2h2v1h-2zM18 3h3v1h-3zM18 4h2v1h-2zM18 5h2v1h-2zM18 6h2v1h-2zM25 2h3v1h-3zM24 3h2v1h-2zM27 3h2v1h-2zM24 4h2v1h-2zM27 4h2v1h-2zM24 5h2v1h-2zM27 5h2v1h-2zM25 6h3v1h-3zM30 0h2v1h-2zM36 0h2v1h-2zM30 1h3v1h-3zM35 1h3v1h-3zM30 2h8v1h-8zM30 3h2v1h-2zM33 3h2v1h-2zM36 3h2v1h-2zM30 4h2v1h-2zM36 4h2v1h-2zM30 5h2v1h-2zM36 5h2v1h-2zM30 6h2v1h-2zM36 6h2v1h-2zM40 0h4v1h-4zM39 1h2v1h-2zM43 1h2v1h-2zM39 2h2v1h-2zM43 2h2v1h-2zM39 3h6v1h-6zM39 4h2v1h-2zM43 4h2v1h-2zM39 5h2v1h-2zM43 5h2v1h-2zM39 6h2v1h-2zM43 6h2v1h-2zM46 0h5v1h-5zM46 1h2v1h-2zM50 1h2v1h-2zM46 2h2v1h-2zM50 2h2v1h-2zM46 3h5v1h-5zM46 4h2v1h-2zM46 5h2v1h-2zM46 6h2v1h-2zM54 0h5v1h-5zM53 1h2v1h-2zM53 2h2v1h-2zM54 3h4v1h-4zM57 4h2v1h-2zM57 5h2v1h-2zM53 6h5v1h-5z"/></svg>
+    </h1>
+    <p>Maps and routes for Garmin Instinct 3 Solar</p>
+  </header>
 
-<h2>Privacy</h2>
-<p>The app has no server, account or analytics. Your position stays on the watch. Downloads are plain file
-requests to jsDelivr or GitHub Pages through Garmin Connect, and those services see your IP address and which
-file was requested. The route page runs in your browser and sends nothing.</p>
+  <div id="alerts"></div>
 
-<h2>Data and credits</h2>
-<p>Map data © OpenStreetMap contributors, ODbL. The whole database is free to download from
-<a href="https://github.com/yukij3/micromaps-data">github.com/yukij3/micromaps-data</a>, with terrain
-sources and licences.</p>
-<p class="small">Support: trdimads@gmail.com. Not a certified navigation tool. Instinct is a trademark of Garmin Ltd.
-or its subsidiaries. microMAPS is not affiliated with or endorsed by Garmin.</p>
+  <div class="tools">
+    <button type="button" id="zoomIn" aria-label="Zoom in"><svg viewBox="0 0 11 11" width="22" height="22" aria-hidden="true"><path d="M4 0h3v4h4v3h-4v4h-3v-4h-4v-3h4z"/></svg></button>
+    <button type="button" id="zoomOut" aria-label="Zoom out"><svg viewBox="0 0 11 11" width="22" height="22" aria-hidden="true"><path d="M0 4h11v3h-11z"/></svg></button>
+    <button type="button" id="locate" aria-label="Locate me"><svg viewBox="-8 -11 16 20" width="20" height="25" aria-hidden="true"><path d="M0-10 7 8 0 4-7 8z"/></svg></button>
+    <button type="button" id="gpx" aria-label="Add a GPX route"><span aria-hidden="true">GPX</span></button>
+  </div>
+</main>
 
-<script>
-"use strict";
-fetch("catalog.json").then(r => r.json()).then(c => {
-  const t = document.getElementById("list");
-  t.textContent = "";
-  const row = cells => {
-    const tr = t.insertRow();
-    cells.forEach(v => { tr.insertCell().textContent = v; });
-  };
-  row(["Area", "Size", "Snapshot"]);
-  c.packs.forEach(p => row([p.title, p.kb + " KB", p.date]));
-}).catch(() => { document.getElementById("list").textContent = ""; });
-</script>
+<aside id="sheet" aria-label="Block and route">
+  <button type="button" id="grip" aria-expanded="false" aria-controls="more">
+    <span class="sr" id="gripText">Show details</span>
+    <svg viewBox="0 0 40 4" width="40" height="4" aria-hidden="true"><path d="M0 0h6v4h-6zM11 0h6v4h-6zM22 0h6v4h-6zM33 0h6v4h-6z"/></svg>
+  </button>
+
+  <div id="scroll">
+    <div id="peek">
+      <form id="search" role="search">
+        <input id="q" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"
+          placeholder="Place, or lat, lon" aria-label="Place name, or latitude and longitude">
+        <button id="go" type="submit" class="btn">Search</button>
+      </form>
+
+      <div id="hits" hidden>
+        <ul id="hitList"></ul>
+        <p class="fine">Search by <a href="https://nominatim.openstreetmap.org/">Nominatim</a>, data &copy; OpenStreetMap contributors. <button type="button" id="hitsClose" class="linkish">Close</button></p>
+      </div>
+
+      <div id="flash" class="plate" role="alert" hidden>
+        <p id="flashText"></p>
+        <a id="flashLink" hidden></a>
+        <button type="button" id="flashAct" hidden></button>
+        <button type="button" id="flashClose" aria-label="Dismiss"><svg viewBox="0 0 7 7" width="14" height="14" aria-hidden="true"><path d="M0 0h2v1h1v1h1v-1h1v-1h2v2h-1v1h-1v1h1v1h1v2h-2v-1h-1v-1h-1v1h-1v1h-2v-2h1v-1h1v-1h-1v-1h-1z"/></svg></button>
+      </div>
+
+      <div class="state">
+        <div class="word" id="status">
+          <svg class="swatch" viewBox="0 0 26 26" width="26" height="26" aria-hidden="true">
+            <rect class="f-halo" x="3" y="3" width="20" height="20"/>
+            <rect id="swatch" class="f-ink s-checking" x="3" y="3" width="20" height="20"/>
+          </svg>
+          <p><strong id="stWord">Checking</strong> <span id="stMeta"></span></p>
+        </div>
+        <fieldset class="seg">
+          <legend class="sr">Block size</legend>
+          <label><input type="radio" name="size" value="10" checked><span>10</span></label>
+          <label><input type="radio" name="size" value="20"><span>20 km</span></label>
+        </fieldset>
+      </div>
+
+      <p id="stNote"></p>
+      <button type="button" id="act" class="btn primary">Checking the list</button>
+      <p id="live" class="sr" aria-live="polite"></p>
+    </div>
+
+    <div id="more">
+
+      <section data-for="ready" hidden aria-label="Get this block">
+        <dl class="rows">
+          <div><dt>Area</dt><dd id="rdTitle"></dd></div>
+          <div><dt>Size</dt><dd id="rdKb"></dd></div>
+          <div><dt>Snapshot</dt><dd id="rdDate"></dd></div>
+          <div><dt>Block</dt><dd id="rdId" class="mono"></dd></div>
+        </dl>
+
+        <h2 id="toWatch">Get it to the watch</h2>
+        <label class="field" for="mainLink">Map link</label>
+        <div class="copy">
+          <input id="mainLink" readonly>
+          <button type="button" class="btn" data-copy="mainLink">Copy</button>
+        </div>
+        <ol class="steps">
+          <li>On the iPhone open the Connect IQ app, then My Device, microMAPS, Settings.</li>
+          <li>Paste the link into the Map host field and save. The field says "leave as it is", but this is the one to use.</li>
+          <li>On the watch hold UP, open Maps, pick the block and press START.</li>
+          <li>Keep Garmin Connect open on the phone until the download ends.</li>
+        </ol>
+        <p>The watch holds one downloaded block. A new one replaces it. Clear the field to bring the full list of areas back.</p>
+
+        <div id="second">
+          <label class="field" for="cdnLink">Second link, if the watch cannot open the first</label>
+          <div class="copy">
+            <input id="cdnLink" readonly>
+            <button type="button" class="btn" data-copy="cdnLink">Copy</button>
+          </div>
+        </div>
+      </section>
+
+      <section data-for="notbuilt building" hidden aria-label="About this request">
+        <h2 id="reqTitle">What a request does</h2>
+        <p data-show="building">The block is built by a job that runs every hour. The page checks for it every 2 minutes while it is open, and again when you come back. <span id="lastCheck"></span></p>
+        <p>A requested block is published in the open data repository, forever, without any name attached. Anyone can download it. ntfy.sh, which carries the request, and GitHub see an IP address, as any site does.</p>
+      </section>
+
+      <section data-for="ready notbuilt building" hidden aria-label="Share this block">
+        <label class="field" for="shareLink">Link to this block on this page</label>
+        <div class="copy">
+          <input id="shareLink" readonly>
+          <button type="button" class="btn" data-copy="shareLink">Copy</button>
+        </div>
+      </section>
+
+      <section id="requests" hidden aria-label="Your requests">
+        <h2>Your requests</h2>
+        <ul class="rows" id="reqList"></ul>
+      </section>
+
+      <section id="route" aria-label="Route">
+        <h2>Add a route</h2>
+        <p>Pick a GPX file, or drop it on the page. It is read on this device and never leaves it.</p>
+        <input id="file" type="file">
+        <label class="btn primary file" for="file">Choose GPX file</label>
+        <details class="paste">
+          <summary>Paste GPX text instead</summary>
+          <textarea id="paste" aria-label="GPX text" placeholder="&lt;gpx ...&gt;" spellcheck="false"></textarea>
+          <button id="usePaste" type="button" class="btn">Use pasted text</button>
+        </details>
+        <p id="routeError" class="plate" role="alert" hidden></p>
+
+        <div id="result" hidden>
+          <dl class="rows">
+            <div><dt>Route</dt><dd id="rtName"></dd></div>
+            <div><dt>Length</dt><dd id="rtKm"></dd></div>
+            <div><dt>Points</dt><dd id="rtPoints"></dd></div>
+            <div><dt>Accuracy</dt><dd id="rtEps"></dd></div>
+            <div><dt>Code</dt><dd id="rtCode"></dd></div>
+          </dl>
+          <p id="rtFit"></p>
+          <label class="field" for="code">Route code</label>
+          <div class="copy column">
+            <textarea id="code" readonly spellcheck="false"></textarea>
+            <button type="button" class="btn primary" data-copy="code">Copy route code</button>
+          </div>
+          <ol class="steps">
+            <li>On the iPhone open the Connect IQ app, then My Device, microMAPS, Settings.</li>
+            <li>Paste the code into Route code and save.</li>
+            <li>Open microMAPS on the watch. It shows Route saved.</li>
+          </ol>
+          <p>The watch keeps one route. A new code replaces it. The line on the watch is simplified, so it can run up to the accuracy above from your track.</p>
+          <button type="button" id="clearRoute" class="btn">Clear the route</button>
+        </div>
+      </section>
+
+      <section class="menu" aria-label="More">
+        <details>
+          <summary>Ready-made areas</summary>
+          <p>The watch lists these without any link. Hold UP, open Maps, pick the area and press START.</p>
+          <ul class="rows" id="areas"><li><span>Loading the list</span></li></ul>
+        </details>
+
+        <details>
+          <summary>How it works</summary>
+          <p>A block is a square of map, 10 or 20 km on a side. Blocks start every 5 km, so one will sit close to where you need it.</p>
+          <p>A block is built once from OpenStreetMap and terrain data, then stays in the open data repository. The watch downloads it through Garmin Connect on the phone. After that the map works with no signal.</p>
+          <p>Faint outlines on the map are blocks that already exist. Dashes around the current block mean it is not built yet, a solid line means it is ready.</p>
+        </details>
+
+        <details>
+          <summary>Privacy</summary>
+          <p>The app has no server, account or analytics. Your position stays on the watch. Downloads are plain file requests to jsDelivr or GitHub Pages through Garmin Connect, and those services see your IP address and which file was requested.</p>
+          <p>This page is static. Map pictures come from OpenStreetMap, the block list from GitHub Pages, and searches go to Nominatim. They see your IP address, and Nominatim sees what you typed. Your position from Locate me and any GPX file stay in this browser.</p>
+          <p>A block request sends only the block id to ntfy.sh. The block is then published in the open data repository, forever, without any name attached. ntfy and GitHub see an IP address, as any site does. This browser keeps your requests and the last map position in its local storage.</p>
+        </details>
+
+        <details>
+          <summary>Data and credits</summary>
+          <p>Map data &copy; OpenStreetMap contributors, ODbL. The whole database is free to download from
+          <a href="https://github.com/yukij3/micromaps-data">github.com/yukij3/micromaps-data</a>, with terrain sources and licences.</p>
+          <p>Map pictures: <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Search: <a href="https://nominatim.openstreetmap.org/">Nominatim</a>. Map code: <a href="https://leafletjs.com/">Leaflet</a>, BSD-2 licence, in <a href="vendor/LICENSE-leaflet.txt">vendor/</a>.</p>
+          <p class="fine">Support: <a href="mailto:trdimads@gmail.com">trdimads@gmail.com</a>. Not a certified navigation tool. Instinct is a trademark of Garmin Ltd. or its subsidiaries. microMAPS is not affiliated with or endorsed by Garmin.</p>
+        </details>
+      </section>
+    </div>
+  </div>
+</aside>
+
+<div id="drop" hidden><p>Drop the GPX file. It stays on this device.</p></div>
+
+<noscript><p class="plate nojs">The map on this page needs JavaScript. The data is at
+<a href="https://github.com/yukij3/micromaps-data">github.com/yukij3/micromaps-data</a>.</p></noscript>
+
+<script src="vendor/leaflet.js"></script>
+<script src="blocks.js"></script>
+<script src="route/route.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

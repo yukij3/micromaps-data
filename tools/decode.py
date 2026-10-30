@@ -9,9 +9,17 @@ line by line to Monkey C (ByteArray, Number, no floats in the tile path).
     pkg.tile(0, 3, 4)     -> Tile | None   (Tile.dem: DemTile | None, version 2)
     pkg.route             -> Route | None
     pkg.latlon_to_xy(lat, lon) -> (x, y) package metres
+
+    python3 -m pipeline.decode out/khibiny                  what a package holds
+    python3 -m pipeline.decode --rebuild <cut> <out>        manifest.bin + tiles.bin from a
+                                                            published 4k/ or 2k/ directory
 """
+import base64
+import hashlib
+import json
 import math
 import os
+import sys
 
 LINE, AREA, POINT = "LINE", "AREA", "POINT"
 M_PER_DEG = 111319.49
@@ -474,10 +482,52 @@ def load_package(path):
     return Package(manifest, tiles, route)
 
 
-if __name__ == "__main__":
-    import sys
+def _cut_file(path):
+    with open(path, encoding="ascii") as f:
+        return base64.b64decode(json.load(f)["d"])
 
-    p = load_package(sys.argv[1] if len(sys.argv) > 1 else "out/khibiny")
+
+def _sha4(data):
+    return hashlib.sha1(data).digest()[:4]
+
+
+def unpack_cut(path):
+    """A published cut (4k/ or 2k/ directory, FORMAT.md 9.2) -> (manifest.bin, tiles.bin) bytes.
+    Blocks publish only the cuts: this is how to get the database out of one."""
+    h = _cut_file(os.path.join(path, "pack.json"))
+    if h[:4] != b"MMPK" or h[-4:] != _sha4(h[:-4]):
+        raise ValueError("bad pack header")
+    r = Reader(h, 6)
+    count = r.u16()
+    total = r.u32()
+    mlen = r.u16()
+    for _ in range(4):
+        r.string()
+    tiles = bytearray()
+    for i in range(count):
+        start = r.u32()
+        n = r.u16()
+        sha = bytes(h[r.p:r.p + 4])
+        r.p += 4
+        g = _cut_file(os.path.join(path, "g%03d.json" % i))
+        if start != len(tiles) or n != len(g) or sha != _sha4(g):
+            raise ValueError("bad group %d" % i)
+        tiles += g
+    if len(tiles) != total or r.p + mlen + 4 != len(h):
+        raise ValueError("bad pack size")
+    return bytes(h[r.p:r.p + mlen]), bytes(tiles)
+
+
+def main(argv):
+    if len(argv) == 4 and argv[1] == "--rebuild":
+        manifest, tiles = unpack_cut(argv[2])
+        os.makedirs(argv[3], exist_ok=True)
+        with open(os.path.join(argv[3], "manifest.bin"), "wb") as f:
+            f.write(manifest)
+        with open(os.path.join(argv[3], "tiles.bin"), "wb") as f:
+            f.write(tiles)
+        argv = argv[:1] + argv[3:]
+    p = load_package(argv[1] if len(argv) > 1 else "out/khibiny")
     print("origin", p.origin, "size", p.size_m, "name", p.name, "enc", p.encoding)
     for L in p.lods:
         n = 0
@@ -494,3 +544,7 @@ if __name__ == "__main__":
               f"contours {p.dem.contour_step_m}/{p.dem.index_every_m} m")
     if p.route:
         print("route", p.route.name, len(p.route.pts), "pts", len(p.route.waypoints), "waypoints")
+
+
+if __name__ == "__main__":
+    main(sys.argv)

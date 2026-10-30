@@ -5,7 +5,8 @@
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).
 https://www.openstreetmap.org/copyright
 
-Snapshot dates are the `date` of each pack in `catalog.json`. Roads, trails, water, peaks, huts and
+Snapshot dates are the `date` of each pack in `catalog.json`, and the third field of each block in
+`blocks/index.json`. Roads, trails, water, peaks, huts and
 place names are filtered and simplified from OpenStreetMap (`classes` in FORMAT.md section 4).
 
 ## Terrain
@@ -13,6 +14,7 @@ place names are filtered and simplified from OpenStreetMap (`classes` in FORMAT.
 Contour lines and elevation grids are computed from Terrain Tiles by Mapzen, hosted on AWS
 (https://registry.opendata.aws/terrain-tiles/). The sources behind each area are read from the
 `x-amz-meta-x-imagery-sources` header of every tile used and listed as `terrain` in `catalog.json`.
+A block carries the same list in the header of its `pack.json`, and the watch shows it under Credits.
 
 - ArcticDEM: DEM(s) courtesy of the Polar Geospatial Center. DEM(s) were created from DigitalGlobe,
   Inc., imagery and funded under National Science Foundation awards 1043681, 1559691, and 1542736.

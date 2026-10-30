@@ -356,7 +356,15 @@ packs/<id>/<date>/manifest.bin   5.3, the database (ODbL 4.6)
 packs/<id>/<date>/tiles.bin      5.2
 packs/<id>/<date>/<slice>/pack.json   {"d":"<base64 pack header>"}, slice = 4k or 2k
 packs/<id>/<date>/<slice>/g000.json   {"d":"<base64 group>"}
+blocks/index.json                the blocks built on request, docs/BLOCKS.md
+blocks/<id>/catalog.json         {"v":1,"n":[title],"p":["<id>.<YYYYMMDD>"],"k":[KB]}, a host of one row
+blocks/<id>/<id>.<YYYYMMDD>/<slice>/pack.json, g000.json...
 ```
+
+A block has no row in the top-level `catalog.json` and its directory holds only the two slices: no
+`manifest.bin` or `tiles.bin`, which would double the repository. The group files are the
+machine-readable database, a slice holds the whole package: `python3 -m tools.decode --rebuild
+<slice dir> <out dir>` writes both files back (`pipeline/decode.py`, `unpack_cut`).
 
 A published `<date>` directory never changes, so a resumed download can not mix two versions.
 Default host `cdn.jsdelivr.net/gh/yukij3/micromaps-data@main` (`.json` is `application/json`,
