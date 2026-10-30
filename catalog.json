@@ -1,0 +1,41 @@
+{
+ "v": 1,
+ "n": [
+  "Khibiny",
+  "Lovozero"
+ ],
+ "p": [
+  "packs/khibiny/2026-10-28",
+  "packs/lovozero/2026-10-30"
+ ],
+ "k": [
+  29,
+  15
+ ],
+ "packs": [
+  {
+   "id": "khibiny",
+   "title": "Khibiny",
+   "path": "packs/khibiny/2026-10-28",
+   "kb": 29,
+   "date": "2026-10-28",
+   "terrain": "ArcticDEM, GMTED2010",
+   "lat": 67.59,
+   "lon": 33.58,
+   "w": 10000,
+   "h": 10000
+  },
+  {
+   "id": "lovozero",
+   "title": "Lovozero",
+   "path": "packs/lovozero/2026-10-30",
+   "kb": 15,
+   "date": "2026-10-30",
+   "terrain": "ArcticDEM, GMTED2010",
+   "lat": 67.79,
+   "lon": 34.72,
+   "w": 10000,
+   "h": 10000
+  }
+ ]
+}

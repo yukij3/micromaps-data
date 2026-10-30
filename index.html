@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>microMAPS: maps and routes</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 17px/1.45 -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 34rem; padding: 1.2rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 .4rem; }
+  h2 { font-size: 1.1rem; margin: 1.4rem 0 .3rem; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { text-align: left; padding: .3rem .4rem .3rem 0; vertical-align: top; }
+  .small { font-size: .9rem; opacity: .8; }
+</style>
+</head>
+<body>
+<h1>microMAPS</h1>
+<p>Offline maps and routes for Garmin Instinct 3 Solar. No account, no app on the phone besides Garmin's own.</p>
+
+<h2>Get a map</h2>
+<p>On the watch: hold UP, open Maps, pick an area and press START. The watch downloads it through Garmin Connect
+on the phone, so keep Garmin Connect running and the screen on Maps until it finishes.</p>
+<table id="list"><tr><td>Loading the list</td></tr></table>
+
+<h2>Add a route</h2>
+<p><a href="route/">Turn a GPX file into a route code.</a> The file stays on your phone.</p>
+
+<h2>Privacy</h2>
+<p>The app has no server, account or analytics. Your position stays on the watch. Downloads are plain file
+requests to jsDelivr or GitHub Pages through Garmin Connect, and those services see your IP address and which
+file was requested. The route page runs in your browser and sends nothing.</p>
+
+<h2>Data and credits</h2>
+<p>Map data © OpenStreetMap contributors, ODbL. The whole database is free to download from
+<a href="https://github.com/yukij3/micromaps-data">github.com/yukij3/micromaps-data</a>, with terrain
+sources and licences.</p>
+<p class="small">Support: trdimads@gmail.com. Not a certified navigation tool. Instinct is a trademark of Garmin Ltd.
+or its subsidiaries. microMAPS is not affiliated with or endorsed by Garmin.</p>
+
+<script>
+"use strict";
+fetch("catalog.json").then(r => r.json()).then(c => {
+  const t = document.getElementById("list");
+  t.textContent = "";
+  const row = cells => {
+    const tr = t.insertRow();
+    cells.forEach(v => { tr.insertCell().textContent = v; });
+  };
+  row(["Area", "Size", "Snapshot"]);
+  c.packs.forEach(p => row([p.title, p.kb + " KB", p.date]));
+}).catch(() => { document.getElementById("list").textContent = ""; });
+</script>
+</body>
+</html>
