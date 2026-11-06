@@ -257,6 +257,7 @@ textarea { display: block; width: 100%; min-height: 7rem; padding: 8px; font: 13
 }
 
 #route .file { margin-top: 12px; cursor: pointer; }
+#donate .btn { margin-top: 12px; text-decoration: none; }
 #file { position: absolute; opacity: 0; width: 1px; height: 1px; }
 #file:focus-visible + .file { outline: 3px solid var(--ink); outline-offset: 2px; }
 .paste { margin-top: 8px; }
