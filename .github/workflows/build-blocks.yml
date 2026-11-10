@@ -1,12 +1,13 @@
 # Builds the map blocks people asked for and keeps them in this repository (BLOCKS in FORMAT.md,
 # docs/BLOCKS.md upstream). An empty queue ends right after the poll, which needs nothing but the
-# stock python3 of the runner.
+# stock python3 of the runner. No secrets: GITHUB_TOKEN pushes, ntfy.sh takes the notices as it is.
 name: build-blocks
 
 on:
   schedule:
-    # off the round minutes: GitHub drops scheduled runs under load, and the top of the hour is the worst
-    - cron: "23 * * * *"
+    # GitHub starts scheduled runs late and drops many of them: asked for every five minutes,
+    # they come a few times an hour. Off the round minutes, the top of the hour is the worst.
+    - cron: "4-59/5 * * * *"
   workflow_dispatch:
     inputs:
       ids:
@@ -25,78 +26,105 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       # read by the script itself: the input never goes through a shell
       BLOCK_IDS: ${{ github.event.inputs.ids }}
+      LIMITS: --max-run 8 --max-day 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Poll the queue
         id: poll
         run: |
           # on its own line: inside echo a crash would read as an empty queue
-          ids=$(python3 builder/scripts/build_blocks.py --poll --repo . --max-run 4 --max-day 40)
+          ids=$(python3 builder/scripts/build_blocks.py --poll --repo . $LIMITS)
           echo "ids=$ids" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: steps.poll.outputs.ids != ''
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: builder/pipeline/requirements.txt
 
       - name: Install dependencies
         if: steps.poll.outputs.ids != ''
         run: pip install -r builder/pipeline/requirements.txt
 
-      - name: Build
-        if: steps.poll.outputs.ids != ''
-        run: python3 builder/scripts/build_blocks.py --repo . --pending "$RUNNER_TEMP/pending.json" --raw "$RUNNER_TEMP/raw" --max-run 4 --max-day 40
-
-      # the packs first: index.json names the commit that added them, a jsDelivr link needs it
-      - name: Publish the packs
-        if: steps.poll.outputs.ids != ''
-        run: |
-          git config user.name "microMAPS builder"
-          git config user.email "trdimads@gmail.com"
-          git add blocks
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "Blocks: build $GITHUB_RUN_ID"
-          for try in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            sleep $((try * 10))
-            git pull --rebase origin main
-          done
-          exit 1
-
-      - name: Publish the index
-        if: steps.poll.outputs.ids != ''
-        run: |
-          # read after the push: a rebase there changes the commit
-          sha=$(git rev-parse --short=10 HEAD)
-          for try in 1 2 3 4 5; do
-            git pull --rebase origin main
-            python3 builder/scripts/build_blocks.py --repo . --apply "$RUNNER_TEMP/pending.json" --commit "$sha"
-            git add blocks/index.json
-            if git diff --cached --quiet; then
-              exit 0
-            fi
-            git commit -m "Blocks: index of build $GITHUB_RUN_ID"
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            # the next pull starts from the remote again, the index is rewritten on top of it
-            git reset --hard HEAD~1
-            sleep $((try * 10))
-          done
-          exit 1
-
-      # a push made with GITHUB_TOKEN may not start a Pages build by itself
-      - name: Update Pages
+      # One round: build, publish the packs, publish the index, tell. Then wait a few minutes for
+      # the next request, people ask for blocks in twos and threes, and go round again.
+      - name: Build and publish
         if: steps.poll.outputs.ids != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" || true
+          ROUNDS: 6
+          LINGER_S: 300
+        run: |
+          git config user.name "microMAPS builder"
+          git config user.email "trdimads@gmail.com"
+          build=builder/scripts/build_blocks.py
+
+          push() {
+            for try in 1 2 3 4 5; do
+              if git push origin HEAD:main; then
+                return 0
+              fi
+              sleep $((try * 10))
+              "$@"
+            done
+            return 1
+          }
+
+          # the packs first: index.json names the commit that added them, a jsDelivr link needs it
+          publish_packs() {
+            git add blocks
+            if git diff --cached --quiet; then
+              return 0
+            fi
+            git commit -q -m "Blocks: build $GITHUB_RUN_ID"
+            push git pull --rebase origin main
+          }
+
+          publish_index() {
+            # read after the push: a rebase there changes the commit
+            sha=$(git rev-parse --short=10 HEAD)
+            for try in 1 2 3 4 5; do
+              git pull -q --rebase origin main
+              python3 $build --repo . --apply "$1" --commit "$sha"
+              git add blocks/index.json
+              if git diff --cached --quiet; then
+                return 0
+              fi
+              git commit -q -m "Blocks: index of build $GITHUB_RUN_ID"
+              if git push origin HEAD:main; then
+                return 0
+              fi
+              # the next pull starts from the remote again, the index is rewritten on top of it
+              git reset -q --hard HEAD~1
+              sleep $((try * 10))
+            done
+            return 1
+          }
+
+          round=1
+          while :; do
+            pending="$RUNNER_TEMP/pending-$round.json"
+            python3 $build --repo . --pending "$pending" --raw "$RUNNER_TEMP/raw" $LIMITS
+            publish_packs
+            publish_index "$pending"
+            # a push made with GITHUB_TOKEN may not start a Pages build by itself
+            gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" > /dev/null || true
+            # waits until Pages serves the index, then tells the page and the phones
+            python3 $build --notify "$pending" || true
+            if [ "$round" -ge "$ROUNDS" ]; then
+              break
+            fi
+            round=$((round + 1))
+            # the ids given by hand were for the first round
+            export BLOCK_IDS=
+            more=$(python3 $build --linger "$LINGER_S" --repo . $LIMITS)
+            if [ -z "$more" ]; then
+              break
+            fi
+          done
