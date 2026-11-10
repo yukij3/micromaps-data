@@ -1,17 +1,26 @@
 # Builds the map blocks people asked for and keeps them in this repository (BLOCKS in FORMAT.md,
 # docs/BLOCKS.md upstream). An empty queue ends right after the poll, which needs nothing but the
 # stock python3 of the runner. No secrets: GITHUB_TOKEN pushes, ntfy.sh takes the notices as it is.
+#
+# The clock. GitHub fires a schedule in this repository once in four to ten hours, whatever the
+# cron line says, so the job keeps its own time: the last step of a run starts the next one, and
+# that one waits out the timer of the `clock` environment before it gets a runner. The wait takes
+# no runner. The schedule stays as the restart, for a run that died before its last step.
+# Both environments are repository settings (docs/BLOCKS.md, The job): `clock` has a wait timer
+# of five minutes, the shortest step a schedule may ask for, `now` has no rules.
 name: build-blocks
 
 on:
   schedule:
-    # GitHub starts scheduled runs late and drops many of them: asked for every five minutes,
-    # they come a few times an hour. Off the round minutes, the top of the hour is the worst.
     - cron: "4-59/5 * * * *"
   workflow_dispatch:
     inputs:
       ids:
         description: Block ids, on top of the queue
+        required: false
+        default: ""
+      wait:
+        description: Wait out the clock first (the job sets it for its next run)
         required: false
         default: ""
 
@@ -22,11 +31,17 @@ concurrency:
 permissions:
   contents: write
   pages: write
+  # to start the next run
+  actions: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    environment:
+      name: ${{ github.event.inputs.wait == '1' && 'clock' || 'now' }}
+      # nothing is deployed here, the environment is only there for its timer
+      deployment: false
     env:
       # read by the script itself: the input never goes through a shell
       BLOCK_IDS: ${{ github.event.inputs.ids }}
@@ -117,7 +132,8 @@ jobs:
             gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" > /dev/null || true
             # waits until Pages serves the index, then tells the page and the phones
             python3 $build --notify "$pending" || true
-            if [ "$round" -ge "$ROUNDS" ]; then
+            # the job has 45 minutes: no new round late in it, the next run takes what comes
+            if [ "$round" -ge "$ROUNDS" ] || [ "$SECONDS" -ge 1200 ]; then
               break
             fi
             round=$((round + 1))
@@ -128,3 +144,26 @@ jobs:
               break
             fi
           done
+
+      # A run that is not over yet goes on with the clock itself: one from the schedule or one
+      # started by hand waits behind this one. Runs after a failure too, and after a cancel:
+      # to stop the clock, disable the workflow.
+      - name: Start the next run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for try in 1 2 3 4 5; do
+            others=$(gh run list -R "$GITHUB_REPOSITORY" -w build-blocks.yml -L 20 --json databaseId,status \
+              --jq "[.[] | select(.status != \"completed\" and .databaseId != $GITHUB_RUN_ID)] | length") || others=
+            if [ -n "$others" ] && [ "$others" -gt 0 ]; then
+              echo "$others more on the way, the clock is theirs"
+              exit 0
+            fi
+            if [ -n "$others" ] && gh workflow run build-blocks.yml -R "$GITHUB_REPOSITORY" --ref main -f wait=1; then
+              echo "next run asked for"
+              exit 0
+            fi
+            sleep $((try * 10))
+          done
+          echo "::warning::the next run was not started, the schedule has to do it"
