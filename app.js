@@ -6,18 +6,21 @@
   const T = {
     word: {
       ready: "Ready", notbuilt: "Not built", building: "Building", empty: "No map data", dense: "Too dense",
-      offgrid: "Outside the grid", checking: "Checking", unknown: "Not known",
+      offgrid: "Outside the grid", checking: "Checking", unknown: "Not known", queued: "Requested",
     },
     tag: {
       ready: "READY", notbuilt: "NOT BUILT", building: "BUILDING", empty: "NO MAP DATA", dense: "TOO DENSE",
-      offgrid: "OFF GRID", checking: "CHECKING", unknown: "NOT KNOWN",
+      offgrid: "OFF GRID", checking: "CHECKING", unknown: "NOT KNOWN", queued: "REQUESTED",
     },
     note: {
       ready: "Snapshot {date}. Copy the link, then follow the steps below.",
       notbuilt: "A request publishes this block in the open data for good, with no name attached.",
       lowzoom: "Zoom in to place the block before you request it.",
-      building: "Requested at {time}. A build can take hours to start: GitHub decides when. You can close this page.",
-      slow: "Requested at {time}. Still waiting. Each run builds a limited number of blocks, and GitHub decides when it starts.",
+      building: "Requested at {time}. The builder takes it on its next run, then needs a minute or two. This page shows it by itself.",
+      started: "Being built right now. It takes a minute or two.",
+      failed: "The map data did not load on the last try. The builder tries again on its next run.",
+      queued: "Somebody asked for this block. It is in the queue.",
+      slow: "Requested at {time}. Still in the queue: GitHub starts the builder late at times. The request is kept for a week.",
       expired: "The request from {time} brought no block. You can send it again.",
       empty: "There is no map data here, so there is nothing to build.",
       dense20: "Too much map for the watch at 20 km. Try 10 km.",
@@ -28,7 +31,7 @@
     },
     act: {
       copy: "Copy map link", copied: "Link copied. Steps below", request: "Request this block", sending: "Sending the request",
-      check: "Check now", checking: "Checking", zoom: "Zoom in to this block", to10: "Switch to 10 km", to20: "Try 20 km",
+      check: "Check now", checking: "Checking", notify: "Notify me when it is ready", zoom: "Zoom in to this block", to10: "Switch to 10 km", to20: "Try 20 km",
       other: "Search another place", retry: "Try again", list: "Checking the list",
     },
     requestFailed: "The request did not go through. Send the block id by mail instead.",
@@ -37,7 +40,9 @@
     requestRefused: "Your block {id} could not be built: {why}.",
     show: "Show it",
     why: { empty: "no map data", dense: "too dense" },
-    requestWaiting: "Building", requestOld: "No result", requestDone: "Ready",
+    requestWaiting: "Requested", requestStarted: "Building", requestOld: "No result",
+    notifyOn: "This browser also shows a notice, as long as the page stays open in a tab.",
+    notifyOff: "Notices are blocked for this page in the browser settings.",
     lastCheck: "Last checked at {time}.",
     badLink: "This link does not point to a block on the grid.",
     copyFail: "Hold the text to copy",
@@ -60,6 +65,9 @@
   const INDEX_URL = "blocks/index.json";
   const CATALOG_URL = "catalog.json";
   const NTFY = "https://ntfy.sh/micromaps-blocks-v1";
+  // what the builder says back (docs/BLOCKS.md, Notices): hints only, the block list decides
+  const STATUS = "https://ntfy.sh/micromaps-status-v1/sse";
+  const NOTICE_TOPIC = "micromaps-";      // + block id: one message when that block has its answer
   const NOMINATIM = "https://nominatim.openstreetmap.org/search";
   const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const MAIL = "trdimads@gmail.com";
@@ -68,7 +76,10 @@
   const RECHECK_MS = 120000;
   const RETURN_GAP_MS = 20000;
   const SLOW_MS = 90 * 60000;
-  const REQUEST_LIFE_MS = 13 * 3600000;   // ntfy keeps a message 12 h
+  const REQUEST_LIFE_MS = 13 * 3600000;   // ntfy keeps a message 12 h, after that the list says if it still waits
+  const STARTED_MS = 10 * 60000;          // a build that began this long ago is over, one way or another
+  const FAILED_MS = 6 * 3600000;
+  const NUDGE_GAP_MS = 10000;             // GitHub Pages may serve the new list a little after the builder says so
   const SEARCH_GAP_MS = 1100;             // Nominatim: at most one request a second
   const FETCH_TIMEOUT_MS = 15000;
   const PICK_ZOOM = 9;                    // below this a block is too small to aim
@@ -93,6 +104,7 @@
   const NO_TILE = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><defs><pattern id="d" width="16" height="16" patternUnits="userSpaceOnUse"><rect width="1" height="1"/></pattern></defs><rect width="256" height="256" fill="#fff"/><rect width="256" height="256" fill="url(#d)"/></svg>');
 
   const $ = id => document.getElementById(id);
+  const TITLE = document.title;
   const fill = (text, values) => text.replace(/\{(\w+)\}/g, (m, k) => values[k]);
   const clock = ms => new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const stamp = ms => new Date(ms).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -212,7 +224,7 @@
   let size = 10;
   let cur = null;           // id of the block on the map
   let pin = null;           // {id, ll}: a block chosen by id stays chosen until the map really moves
-  let index = null;         // {b, x} of blocks/index.json
+  let index = null;         // {b, x, q} of blocks/index.json
   let indexFailed = false;
   let lastCheck = 0;
   let checking = false;
@@ -220,13 +232,22 @@
   let open = false;
   let wide = wideQuery.matches;
   let requests = store.get("mm.requests", {});
+  let live = null;          // EventSource on the status topic, open while a request waits
+  const started = {};       // id: when the builder said it took the block
+  const failed = {};        // id: when the builder said a try failed
+  let nudged = 0;
   let copiedUntil = 0;
   let booted = false;
   let framePx = 0;
   let frameHigh = 0;
   let frameState = "checking";
 
-  const hasWaiting = () => Object.keys(requests).some(id => Date.now() - requests[id] < REQUEST_LIFE_MS);
+  // a request waits while ntfy still holds it, and after that while the builder's saved queue does
+  const waits = id => Date.now() - requests[id] < REQUEST_LIFE_MS || !!(index && index.q[id]);
+  const hasWaiting = () => Object.keys(requests).some(waits);
+  const isStarted = id => started[id] && Date.now() - started[id] < STARTED_MS;
+  // a notice from a tab in the background: desktop browsers only, a phone puts the tab to sleep
+  const canNotify = () => "Notification" in window && !matchMedia("(pointer: coarse)").matches;
 
   function stateOf(id) {
     if (!Blocks.parse(id)) {
@@ -244,7 +265,7 @@
       }
     }
     const asked = requests[id];
-    if (asked && Date.now() - asked < REQUEST_LIFE_MS) {
+    if ((asked && Date.now() - asked < REQUEST_LIFE_MS) || (index && index.q[id])) {
       return "building";
     }
     if (index) {
@@ -311,6 +332,8 @@
     const lowZoom = map.getZoom() < PICK_ZOOM;
     const asked = requests[id];
     const old = st === "notbuilt" && asked && Date.now() - asked >= REQUEST_LIFE_MS;
+    // "building" is the state from the request on; the word says so only once the builder has begun
+    const word = st === "building" && !isStarted(id) ? "queued" : st;
     let meta = id;
     let note = T.note[st] || "";
 
@@ -321,9 +344,11 @@
     const tagEl = $("tag");
     if (tagEl) {
       tagEl.className = "tag" + (st === "empty" || st === "dense" || st === "offgrid" ? " alert" : "");
-      tagEl.innerHTML = microSvg(framePx < TAG_FULL_PX ? T.tag[st] : T.tag[st] + " " + size + " KM", 2);
+      tagEl.innerHTML = microSvg(framePx < TAG_FULL_PX ? T.tag[word] : T.tag[word] + " " + size + " KM", 2);
     }
-    $("stWord").textContent = T.word[st];
+    $("stWord").textContent = T.word[word];
+    $("mainLink").value = Blocks.parse(id) ? Blocks.mainLink(id) : "";
+    $("second").hidden = true;
 
     if (st === "ready") {
       const [title, kb, date, commit] = index.b[id];
@@ -333,7 +358,6 @@
       $("rdKb").textContent = kb + " KB";
       $("rdDate").textContent = date;
       $("rdId").textContent = id;
-      $("mainLink").value = Blocks.mainLink(id);
       const good = /^[0-9a-f]{7,40}$/.test(String(commit));
       $("second").hidden = !good;
       $("cdnLink").value = good ? Blocks.secondLink(id, commit) : "";
@@ -361,8 +385,26 @@
         setAct(T.act.request, () => sendRequest(id));
       }
     } else if (st === "building") {
-      note = fill(Date.now() - asked > SLOW_MS ? T.note.slow : T.note.building, { time: clock(asked) });
-      setAct(checking ? T.act.checking : T.act.check, () => loadIndex(), checking);
+      if (isStarted(id)) {
+        note = T.note.started;
+      } else if (failed[id] && Date.now() - failed[id] < FAILED_MS) {
+        note = T.note.failed;
+      } else if (!asked) {
+        note = T.note.queued;
+      } else {
+        note = fill(Date.now() - asked > SLOW_MS ? T.note.slow : T.note.building, { time: clock(asked) });
+      }
+      if (asked && canNotify() && Notification.permission === "default") {
+        setAct(T.act.notify, askNotify);
+      } else {
+        setAct(checking ? T.act.checking : T.act.check, () => loadIndex(), checking);
+      }
+      const topic = NOTICE_TOPIC + id;
+      $("ntfyLink").textContent = topic;
+      // the Android app takes its own scheme, everything else gets the web app of ntfy
+      $("ntfyLink").href = (/Android/.test(navigator.userAgent) ? "ntfy://ntfy.sh/" : "https://ntfy.sh/") + topic;
+      $("notifyState").textContent = !canNotify() || Notification.permission === "default" ? ""
+        : Notification.permission === "granted" ? T.notifyOn : T.notifyOff;
     } else if (st === "dense") {
       note = size === 20 ? T.note.dense20 : T.note.dense10;
       if (size === 20) {
@@ -393,7 +435,6 @@
     for (const el of document.querySelectorAll('[data-show="building"]')) {
       el.hidden = st !== "building";
     }
-    $("reqTitle").textContent = st === "building" ? "While you wait" : "What a request does";
     $("lastCheck").textContent = lastCheck ? fill(T.lastCheck, { time: clock(lastCheck) }) : "";
     $("shareLink").value = location.href.split("#")[0] + "#" + id;
   }
@@ -596,10 +637,11 @@
     try {
       const r = await timedFetch(INDEX_URL + "?t=" + Date.now(), { cache: "no-store" });
       if (r.status === 404) {
-        index = { b: {}, x: {} };   // nothing published yet
+        index = { b: {}, x: {}, q: {} };   // nothing published yet
       } else if (r.ok) {
         const j = await r.json();
-        index = { b: j.b || {}, x: j.x || {} };
+        const obj = v => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+        index = { b: obj(j.b), x: obj(j.x), q: obj(j.q) };
       } else {
         throw new Error("status " + r.status);
       }
@@ -610,6 +652,7 @@
       indexFailed = true;       // a list from before stays good enough
     }
     checking = false;
+    listen();
     if (cur) {
       render();
       drawOutlines();
@@ -623,10 +666,11 @@
       const done = index.b[id] ? "ready" : index.x[id];
       if (done) {
         delete requests[id];
+        const text = done === "ready" ? fill(T.requestReady, { id }) : fill(T.requestRefused, { id, why: T.why[done] || done });
+        notice(id, text);
         if (!told && id !== cur) {
           told = true;
-          flash(done === "ready" ? fill(T.requestReady, { id }) : fill(T.requestRefused, { id, why: T.why[done] || done }),
-            { label: T.show, run: () => select(id) });
+          flash(text, { label: T.show, run: () => select(id) });
         }
       } else if (Date.now() - requests[id] > 7 * 24 * 3600000) {
         delete requests[id];
@@ -649,26 +693,123 @@
       b.addEventListener("click", () => select(id));
       const s = document.createElement("span");
       s.className = "val";
-      s.textContent = Date.now() - requests[id] < REQUEST_LIFE_MS ? T.requestWaiting : T.requestOld;
+      s.textContent = !waits(id) ? T.requestOld : isStarted(id) ? T.requestStarted : T.requestWaiting;
       li.append(b, s);
       list.append(li);
     }
   }
 
   setInterval(() => {
-    if (hasWaiting() && !document.hidden) {
+    // in the background too when a notice was asked for: the live line below may be cut
+    if (hasWaiting() && (!document.hidden || (canNotify() && Notification.permission === "granted"))) {
       loadIndex();
     }
   }, RECHECK_MS);
 
   function onReturn() {
-    if (!document.hidden && hasWaiting() && Date.now() - lastCheck > RETURN_GAP_MS) {
+    if (document.hidden) {
+      return;
+    }
+    document.title = TITLE;
+    if (hasWaiting() && Date.now() - lastCheck > RETURN_GAP_MS) {
       loadIndex();
     }
   }
   document.addEventListener("visibilitychange", onReturn);
   window.addEventListener("pageshow", onReturn);
   window.addEventListener("focus", onReturn);
+
+  /* ---------- word from the builder ---------- */
+
+  // The builder says on a public ntfy topic when it takes a block and when its answer is
+  // published. Anyone can write there, so a message only changes the wording of the wait and
+  // makes the page read the block list again: the list alone says a block is ready.
+  function listen() {
+    if (!hasWaiting() || !("EventSource" in window)) {
+      if (live) {
+        live.close();
+        live = null;
+      }
+      return;
+    }
+    if (live) {
+      return;
+    }
+    const first = Math.min(...Object.keys(requests).filter(waits).map(id => requests[id]));
+    const since = Math.floor(Math.max(first, Date.now() - 12 * 3600000) / 1000);
+    live = new EventSource(STATUS + "?since=" + since);
+    live.onmessage = e => {
+      try {
+        const m = JSON.parse(e.data);
+        hint(JSON.parse(m.message), m.time * 1000);
+      } catch (err) {
+        // not ours
+      }
+    };
+  }
+
+  function hint(ev, at) {
+    if (!ev || ev.v !== 1 || !Number.isFinite(at)) {
+      return;
+    }
+    const ids = v => (Array.isArray(v) ? v : v && typeof v === "object" ? Object.keys(v) : []).filter(id => requests[id] || id === cur);
+    for (const id of ids(ev.w)) {
+      started[id] = at;
+    }
+    for (const id of ids(ev.f)) {
+      failed[id] = at;
+      delete started[id];
+    }
+    const done = ids(ev.b).concat(ids(ev.x));
+    for (const id of done) {
+      delete started[id];
+    }
+    if (done.length) {
+      nudge(3);
+    }
+    renderRequests();
+    render();
+  }
+
+  async function nudge(left) {
+    if (Date.now() - nudged < NUDGE_GAP_MS / 2) {
+      return;
+    }
+    nudged = Date.now();
+    await loadIndex();
+    if (left > 1 && hasWaiting()) {
+      setTimeout(() => nudge(left - 1), NUDGE_GAP_MS);
+    }
+  }
+
+  async function askNotify() {
+    try {
+      await Notification.requestPermission();
+    } catch (e) {
+      // an old Safari wants a callback: the button just stays
+    }
+    render();
+  }
+
+  // the answer for somebody who is looking at another tab
+  function notice(id, text) {
+    if (!document.hidden) {
+      return;
+    }
+    document.title = text;
+    if (canNotify() && Notification.permission === "granted") {
+      try {
+        const n = new Notification("microMAPS", { body: text, tag: "mm-" + id });
+        n.onclick = () => {
+          window.focus();
+          select(id);
+          n.close();
+        };
+      } catch (e) {
+        // the title of the tab still says it
+      }
+    }
+  }
 
   /* ---------- requests ---------- */
 
@@ -685,7 +826,9 @@
       }
       requests[id] = Date.now();
       store.set("mm.requests", requests);
+      delete failed[id];
       renderRequests();
+      listen();
     } catch (e) {
       const body = encodeURIComponent(id);
       flash(T.requestFailed, { label: T.requestMail, href: "mailto:" + MAIL + "?subject=microMAPS%20block%20request&body=" + body });

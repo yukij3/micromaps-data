@@ -88,8 +88,17 @@
           <div><dt>Snapshot</dt><dd id="rdDate"></dd></div>
           <div><dt>Block</dt><dd id="rdId" class="mono"></dd></div>
         </dl>
+      </section>
 
+      <section data-for="building" hidden aria-label="When it is ready">
+        <h2>When it is ready</h2>
+        <p>Keep this page open and the state above changes by itself. <span id="notifyState"></span> <span id="lastCheck"></span></p>
+        <p>With the page closed, a phone can tell you. Follow the topic <a id="ntfyLink" class="mono" target="_blank" rel="noopener"></a> in <a href="https://ntfy.sh/" target="_blank" rel="noopener">ntfy</a>, a free notification app. It gets one message, when the block is ready or cannot be built.</p>
+      </section>
+
+      <section data-for="ready building" hidden aria-label="Get this block to the watch">
         <h2 id="toWatch">Get it to the watch</h2>
+        <p data-show="building">The link below is final. You can put it into the watch settings now: the block shows up under Maps as soon as it is built.</p>
         <label class="field" for="mainLink">Map link</label>
         <div class="copy">
           <input id="mainLink" readonly>
@@ -112,9 +121,9 @@
         </div>
       </section>
 
-      <section data-for="notbuilt building" hidden aria-label="About this request">
-        <h2 id="reqTitle">What a request does</h2>
-        <p data-show="building">The block is built by a scheduled job, and GitHub decides when it starts. The page checks for it every 2 minutes while it is open, and again when you come back. <span id="lastCheck"></span></p>
+      <section data-for="notbuilt" hidden aria-label="About a request">
+        <h2>What a request does</h2>
+        <p>A job on GitHub builds the block from OpenStreetMap and terrain data. It needs a minute or two once it starts, and GitHub decides when that is. This page then shows the block as ready, and a phone can get a notice.</p>
         <p>A requested block is published in the open data repository, forever, without any name attached. Anyone can download it. ntfy.sh, which carries the request, and GitHub see an IP address, as any site does.</p>
       </section>
 
@@ -191,7 +200,7 @@
           <summary>Privacy</summary>
           <p>The app has no server, account or analytics. Your position stays on the watch. Downloads are plain file requests to jsDelivr or GitHub Pages through Garmin Connect, and those services see your IP address and which file was requested.</p>
           <p>This page is static. Map pictures come from OpenStreetMap, the block list from GitHub Pages, and searches go to Nominatim. They see your IP address, and Nominatim sees what you typed. Your position from Locate me and any GPX file stay in this browser.</p>
-          <p>A block request sends only the block id to ntfy.sh. The block is then published in the open data repository, forever, without any name attached. ntfy and GitHub see an IP address, as any site does. This browser keeps your requests and the last map position in its local storage.</p>
+          <p>A block request sends only the block id to ntfy.sh. The block is then published in the open data repository, forever, without any name attached. While a request waits, the page listens to ntfy.sh for word from the builder, which names block ids and nothing else. ntfy and GitHub see an IP address, as any site does. This browser keeps your requests and the last map position in its local storage.</p>
         </details>
 
         <details>
