@@ -320,7 +320,6 @@
     sumAsked: "Asked, 12 h", sumBuilt: "Built, 12 h", sumWait: "Waiting now",
     recent: "Last 12 hours", newest: "Newest blocks", quiet: "Nothing in the last 12 hours.",
     key: "Hatched on the map: asked for, not built yet.",
-    fine: "From the public request topic on ntfy.sh. Anyone can write there, so take it as a hint.",
     markOne: "Requested block {id}", markMany: "{n} requested blocks, zoom in",
     live: "Live", connecting: "Connecting",
   };
@@ -387,7 +386,6 @@
       '<h3 id="actRecentH"></h3><ul id="actList" class="act-list"></ul>' +
       '<h3 id="actNewH"></h3><ul id="actNew" class="act-list"></ul>' +
       '<p class="act-key"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><rect class="act-swatch" x="1" y="1" width="12" height="12"/></svg><span id="actKey"></span></p>' +
-      '<p class="act-fine" id="actFine"></p>' +
     "</div>";
   const dts = plate.querySelectorAll(".act-sum dt");
   dts[0].textContent = T.sumAsked;
@@ -397,7 +395,6 @@
   $("actRecentH").textContent = T.recent;
   $("actNewH").textContent = T.newest;
   $("actKey").textContent = T.key;
-  $("actFine").textContent = T.fine;
 
   function setOpen(v) {
     isOpen = v;
