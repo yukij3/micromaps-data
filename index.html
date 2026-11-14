@@ -9,6 +9,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23fff' d='M0 0h16v16H0z'/%3E%3Cpath d='M1 1h14v14H1zm3 3v8h8V4z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="activity.css">
 </head>
 <body>
 
@@ -21,6 +22,7 @@
       <svg viewBox="0 0 59 7" width="177" height="21" role="img" aria-label="microMAPS"><path d="M0 2h7v1h-7zM0 3h2v1h-2zM3 3h2v1h-2zM6 3h2v1h-2zM0 4h2v1h-2zM3 4h2v1h-2zM6 4h2v1h-2zM0 5h2v1h-2zM3 5h2v1h-2zM6 5h2v1h-2zM0 6h2v1h-2zM3 6h2v1h-2zM6 6h2v1h-2zM9 0h2v1h-2zM9 2h2v1h-2zM9 3h2v1h-2zM9 4h2v1h-2zM9 5h2v1h-2zM9 6h2v1h-2zM13 2h4v1h-4zM12 3h2v1h-2zM12 4h2v1h-2zM12 5h2v1h-2zM13 6h4v1h-4zM18 2h2v1h-2zM21 2h2v1h-2zM18 3h3v1h-3zM18 4h2v1h-2zM18 5h2v1h-2zM18 6h2v1h-2zM25 2h3v1h-3zM24 3h2v1h-2zM27 3h2v1h-2zM24 4h2v1h-2zM27 4h2v1h-2zM24 5h2v1h-2zM27 5h2v1h-2zM25 6h3v1h-3zM30 0h2v1h-2zM36 0h2v1h-2zM30 1h3v1h-3zM35 1h3v1h-3zM30 2h8v1h-8zM30 3h2v1h-2zM33 3h2v1h-2zM36 3h2v1h-2zM30 4h2v1h-2zM36 4h2v1h-2zM30 5h2v1h-2zM36 5h2v1h-2zM30 6h2v1h-2zM36 6h2v1h-2zM40 0h4v1h-4zM39 1h2v1h-2zM43 1h2v1h-2zM39 2h2v1h-2zM43 2h2v1h-2zM39 3h6v1h-6zM39 4h2v1h-2zM43 4h2v1h-2zM39 5h2v1h-2zM43 5h2v1h-2zM39 6h2v1h-2zM43 6h2v1h-2zM46 0h5v1h-5zM46 1h2v1h-2zM50 1h2v1h-2zM46 2h2v1h-2zM50 2h2v1h-2zM46 3h5v1h-5zM46 4h2v1h-2zM46 5h2v1h-2zM46 6h2v1h-2zM54 0h5v1h-5zM53 1h2v1h-2zM53 2h2v1h-2zM54 3h4v1h-4zM57 4h2v1h-2zM57 5h2v1h-2zM53 6h5v1h-5z"/></svg>
     </h1>
     <p>Maps and routes for Garmin Instinct 3 Solar</p>
+    <p id="built" hidden><button type="button" id="builtBtn"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="#fff" d="M0 0h16v16H0z"/><path d="M2 2h12v12H2zm3 3v6h6V5z"/></svg><span id="builtText"></span></button></p>
   </header>
 
   <div id="alerts"></div>
@@ -194,13 +196,14 @@
           <p>A block is a square of map, 10 or 20 km on a side. Blocks start every 5 km, so one will sit close to where you need it.</p>
           <p>A block is built once from OpenStreetMap and terrain data, then stays in the open data repository. A dense 20 km block can lose small roads and footways so that it fits. The watch downloads it through Garmin Connect on the phone. After that the map works with no signal.</p>
           <p>Faint outlines on the map are blocks that already exist. Dashes around the current block mean it is not built yet, a solid line means it is ready.</p>
+          <p>Zoomed out, a small square marks a built block, and a black plate counts the blocks close together. Tap one to go there.</p>
         </details>
 
         <details>
           <summary>Privacy</summary>
           <p>The app has no server, account or analytics. Your position stays on the watch. Downloads are plain file requests to jsDelivr or GitHub Pages through Garmin Connect, and those services see your IP address and which file was requested.</p>
           <p>This page is static. Map pictures come from OpenStreetMap, the block list from GitHub Pages, and searches go to Nominatim. They see your IP address, and Nominatim sees what you typed. Your position from Locate me and any GPX file stay in this browser.</p>
-          <p>A block request sends only the block id to ntfy.sh. The block is then published in the open data repository, forever, without any name attached. While a request waits, the page listens to ntfy.sh for word from the builder, which names block ids and nothing else. ntfy and GitHub see an IP address, as any site does. This browser keeps your requests and the last map position in its local storage.</p>
+          <p>A block request sends only the block id to ntfy.sh. The block is then published in the open data repository, forever, without any name attached. While a request waits, the page listens to ntfy.sh for word from the builder, which names block ids and nothing else. The plate of requests on the map reads the same public topics, so every open page sees which blocks were asked for in the last 12 hours, never by whom. When the plate is open it may ask Nominatim for the place names of a few of those blocks. ntfy and GitHub see an IP address, as any site does. This browser keeps your requests and the last map position in its local storage.</p>
         </details>
 
         <details>
@@ -224,5 +227,6 @@
 <script src="blocks.js"></script>
 <script src="route/route.js"></script>
 <script src="app.js"></script>
+<script src="activity.js"></script>
 </body>
 </html>

@@ -1,0 +1,109 @@
+/* activity.js: requested blocks on the map and the plate of the latest requests. Same ink and
+   paper as style.css; a requested block is hatched and dotted, a built one keeps its outline. */
+
+/* the map */
+.act-req { fill: url(#mm-hatch); stroke-dasharray: 0 6; stroke-linecap: round; animation: act-march 1.6s linear infinite; }
+.act-req.hot { fill: url(#mm-hatch-hot); stroke-width: 3; }
+.act-req.building { animation-duration: .6s; }
+@keyframes act-march { to { stroke-dashoffset: -12px; } }
+
+.leaflet-div-icon.act-mark, .leaflet-div-icon.act-pulse { background: none; border: 0; }
+.act-mark { cursor: pointer; color: var(--ink); }
+.act-mark svg { overflow: visible; }
+.act-box { fill: url(#mm-hatch); stroke: var(--ink); stroke-width: 2; }
+.act-mark.hot .act-box { fill: url(#mm-hatch-hot); stroke-width: 3; }
+.act-mark.building .act-box { stroke-dasharray: 2 2; }
+.act-mark:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.act-n {
+  position: absolute; left: 19px; top: 2px; padding: 2px 3px; background: var(--paper); color: var(--ink); line-height: 0;
+}
+.act-mark.hot .act-n { background: var(--ink); color: var(--paper); }
+
+/* where a request just came in: squares open out in steps, as a 1-bit screen would draw them */
+.act-pulse { pointer-events: none; }
+.act-pulse i {
+  position: absolute; inset: 0; border: 3px solid var(--ink); outline: 2px solid var(--paper);
+  transform: scale(.4); opacity: 0; animation: act-ripple 2.4s steps(8, end) forwards;
+}
+.act-pulse i:nth-child(2) { animation-delay: .3s; }
+.act-pulse i:nth-child(3) { animation-delay: .6s; }
+@keyframes act-ripple {
+  0% { transform: scale(.4); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: scale(4); opacity: 0; }
+}
+.act-pulse.still i { animation: none; opacity: 1; transform: scale(1.2); }
+.act-pulse.still i:nth-child(2) { transform: scale(2); }
+.act-pulse.still i:nth-child(3) { display: none; }
+
+/* the plate: under the brand on a phone, at the top right of a wide map. --brand-b is where the
+   brand ends (app.js measures it, it grows a line zoomed out); --act-room is what the plate takes
+   under the brand, kept clear for the block by app.js and for the alerts below */
+#stage { --act-room: 58px; }
+.act {
+  position: absolute; z-index: 3; top: calc(var(--brand-b) + 8px); left: 8px;
+  width: min(330px, calc(100% - 16px)); background: var(--paper); border: 2px solid var(--ink);
+  display: flex; flex-direction: column; max-height: calc(100% - var(--brand-b) - 8px - 116px);
+}
+body.mm-act #alerts { top: calc(var(--brand-b) + 8px + var(--act-room)); }
+body.open .act { visibility: hidden; }
+@media (min-width: 1120px) {
+  #stage { --act-room: 0px; }
+  .act { left: auto; right: 8px; top: calc(8px + env(safe-area-inset-top)); max-height: calc(100% - 16px - 110px); }
+  body.mm-act #alerts { right: calc(8px + 330px + 8px); }
+}
+@media (max-height: 460px) and (min-width: 540px) {
+  .act { max-height: calc(100% - var(--brand-b) - 8px - 16px); }
+}
+
+.act-head {
+  flex: none; display: flex; align-items: center; gap: 9px; width: 100%; min-height: var(--tap); padding: 6px 10px 6px 9px;
+  border: 0; background: var(--paper); color: var(--ink); text-align: left; cursor: pointer;
+}
+.act-head:focus-visible { outline-offset: -5px; box-shadow: none; }
+.act-lines { flex: 1; min-width: 0; line-height: 1.25; }
+.act-lines strong, .act-lines span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.act-lines strong { font-size: 14.5px; }
+.act-lines span { font-size: 13px; font-variant-numeric: tabular-nums; }
+.act-caret { flex: none; }
+.act.open .act-caret { transform: scaleY(-1); }
+.act.new .act-head { background: var(--ink); color: var(--paper); }
+@media (hover: hover) {
+  .act-head:hover { background: var(--ink); color: var(--paper); }
+}
+
+/* a square that blinks while the stream is open, empty while it is not */
+.act-live { flex: none; width: 10px; height: 10px; border: 2px solid var(--ink); }
+.act-live.on { background: currentColor; animation: act-blink 2s linear infinite; }
+@keyframes act-blink { 0%, 74% { background: currentColor; } 75%, 100% { background: transparent; } }
+
+.act-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 10px 10px; border-top: 1px dotted var(--ink); }
+.act-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 2px; }
+.act-sum div { display: flex; flex-direction: column-reverse; }
+.act-sum dt { font-size: 12px; line-height: 1.2; }
+.act-sum dd { font-size: 20px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.act h3 { margin: 10px 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+.act-list li + li { border-top: 1px dotted var(--ink); }
+.act-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px; width: 100%; min-height: 40px; padding: 6px 0;
+  border: 0; background: none; color: inherit; text-align: left; font-size: 14px; line-height: 1.25; cursor: pointer;
+}
+.act-row:focus-visible { outline-offset: 0; }
+@media (hover: hover) {
+  .act-row:hover .act-name { text-decoration: underline; text-underline-offset: 3px; }
+}
+.act-what { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.act-kind { font-weight: 700; margin-right: 6px; }
+.act-name.mono { font-size: 13px; }
+.act-why { margin-left: 6px; font-size: 13px; }
+.act-when { flex: none; font-size: 13px; font-variant-numeric: tabular-nums; }
+.k-refused .act-kind, .k-failed .act-kind { background: var(--ink); color: var(--paper); padding: 0 3px; }
+.act-quiet { padding: 8px 0; font-size: 14px; }
+.act-key { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; line-height: 1.3; }
+.act-key svg { flex: none; }
+.act-swatch { fill: url(#mm-hatch); stroke: var(--ink); stroke-width: 2; stroke-dasharray: 0 4; stroke-linecap: round; }
+.act-fine { margin-top: 6px; font-size: 12.5px; line-height: 1.3; }
+
+@media (prefers-reduced-motion: reduce) {
+  .act-req, .act-live.on { animation: none; }
+}

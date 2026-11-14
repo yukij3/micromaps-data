@@ -33,5 +33,5 @@ Map data © OpenStreetMap contributors, https://www.openstreetmap.org/copyright
 
 See [ATTRIBUTION.md](ATTRIBUTION.md) for the terrain sources of each area.
 
-The page (`index.html`, `app.js`, `style.css`, `blocks.js`, `route/`) the tools in `tools/` and the builder in `builder/` are MIT licensed. `vendor/` holds Leaflet 1.9.4 from
+The page (`index.html`, `app.js`, `style.css`, `blocks.js`, `activity.js`, `activity.css`, `route/`) the tools in `tools/` and the builder in `builder/` are MIT licensed. `vendor/` holds Leaflet 1.9.4 from
 npm, under its BSD-2 licence ([vendor/LICENSE-leaflet.txt](vendor/LICENSE-leaflet.txt)).

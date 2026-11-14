@@ -44,7 +44,7 @@ svg { display: block; fill: currentColor; shape-rendering: crispEdges; }
 .fine { font-size: 13.5px; }
 
 /* the map */
-#stage { position: fixed; top: 0; left: 0; right: 0; bottom: var(--peek); overflow: hidden; }
+#stage { position: fixed; top: 0; left: 0; right: 0; bottom: var(--peek); overflow: hidden; --brand-b: 64px; }
 body.open #stage { bottom: calc(100vh - var(--gap)); }
 @supports (height: 1dvh) {
   body.open #stage { bottom: calc(100dvh - var(--gap)); }
@@ -90,6 +90,12 @@ body.open #stage { bottom: calc(100vh - var(--gap)); }
 .frame-tag, .glyph { pointer-events: none; }
 .tiny .frame-tag { display: none; }
 
+/* far out the built blocks are marks on a canvas, close in outlines: one fades into the other */
+.leaflet-overview-pane { pointer-events: none; }
+.leaflet-overview-pane, .leaflet-outlines-pane { transition: opacity .3s var(--ease); }
+#stage:not(.far) .leaflet-overview-pane, .far .leaflet-outlines-pane { opacity: 0; }
+#map.on-mark { cursor: pointer; }
+
 #cross {
   position: absolute; left: 50%; top: 50%; width: 15px; height: 15px; margin: -7px 0 0 -7px;
   z-index: 2; pointer-events: none;
@@ -107,8 +113,20 @@ body.open #stage { bottom: calc(100vh - var(--gap)); }
 body.open .brand { visibility: hidden; }
 .brand h1 { font-size: 0; }
 .brand p { margin-top: 5px; font-size: 13.5px; line-height: 1.25; }
+/* how much has been built, beside the overview: the mark of a lone block far out, and the count */
+#built { margin-top: 6px; }
+#stage:not(.far) #built { display: none; }
+#builtBtn {
+  display: flex; align-items: center; gap: 6px; margin: -2px 0 -2px -2px; padding: 2px; border: 0; background: none;
+  font: 12.5px/1.25 var(--mono); font-variant-numeric: tabular-nums; text-align: left; cursor: pointer; pointer-events: auto;
+}
+#builtBtn svg { flex: none; }
+@media (hover: hover) {
+  #builtBtn:hover span { text-decoration: underline; text-underline-offset: 3px; }
+}
 
-#alerts { position: absolute; z-index: 3; top: calc(78px + env(safe-area-inset-top)); left: 8px; right: 8px; }
+/* under the brand, wherever it ends (--brand-b, app.js) */
+#alerts { position: absolute; z-index: 3; top: calc(var(--brand-b) + 8px); left: 8px; right: 8px; }
 #alerts .plate { max-width: 34rem; }
 
 .tools {
@@ -312,7 +330,6 @@ summary { cursor: pointer; }
 }
 @media (max-height: 460px) and (min-width: 540px) {
   .brand p { display: none; }
-  #alerts { top: calc(44px + env(safe-area-inset-top)); }
 }
 
 /* a small phone: one column of tools keeps clear of the frame, and the caption stays on one line */
@@ -326,4 +343,5 @@ summary { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   #sheet { transition: none; }
   .s-building { animation: none; }
+  .leaflet-overview-pane, .leaflet-outlines-pane { transition: none; }
 }

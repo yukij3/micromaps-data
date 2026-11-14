@@ -60,6 +60,8 @@
     routeFits: "Fits the {size} km block now on the map.",
     routeOutside: "Too wide for a 20 km block: {out} km of {all} km ({pct}%) is outside the block on the map. The route still works on the watch, that part just has no map under it.",
     showDetails: "Show details", hideDetails: "Hide details",
+    built: "{n} blocks built \u00b7 ~{km} km\u00b2 mapped", built1: "1 block built \u00b7 ~{km} km\u00b2 mapped",
+    builtShow: "{text}. Show them all on the map",
   };
 
   const INDEX_URL = "blocks/index.json";
@@ -86,6 +88,14 @@
   const OUTLINE_ZOOM = 9;
   const VEIL_ZOOM = 7;
   const MAX_OUTLINES = 300;
+  // below OUTLINE_ZOOM the built blocks are on one canvas (drawOverview)
+  const FAR_PAD = 0.3;                    // canvas beyond the view on each side, a share of the view
+  const FAR_CELL_PX = 48;                 // blocks smaller than FOOT_PX gather on a grid of this step
+  const FOOT_PX = 14;                     // where a 10 km block is this wide on screen, blocks are drawn as themselves
+  const MAX_FEET = 3000;
+  const TAP_PX = 44;                      // a mark takes a tap this wide, whatever its size
+  const CROWD_MAX_ZOOM = 12;              // a tap on a count goes no closer than this
+  const FADE_MS = 300;                    // the overview and the outlines cross over (style.css)
   const TAG_MIN_PX = 150;                 // the state alone needs this much width of frame
   const TAG_FULL_PX = 250;                // the state and the size
   const DASH = { notbuilt: [14, 8], building: [0, 11], empty: [2, 9], offgrid: [2, 9], dense: [3, 3], checking: [10, 10], unknown: [10, 10] };
@@ -201,7 +211,10 @@
     .addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors')
     .addTo(map);
 
-  for (const [name, z] of [["veil", 410], ["outlines", 420], ["track", 430], ["frame", 440]]) {
+  // panes over the tiles, bottom up: veil 410, outlines 420, overview 422 (built blocks far out),
+  // activity 425 (requested blocks, activity.js), track 430, frame 440 (the block on the map), then
+  // activityMarks 445 (marks and ripples of requests, activity.js) and Leaflet's markers 600
+  for (const [name, z] of [["veil", 410], ["outlines", 420], ["overview", 422], ["track", 430], ["frame", 440]]) {
     map.createPane(name).style.zIndex = z;
   }
   const pane = name => ({ pane: name, renderer: L.svg({ pane: name, padding: 0.6 }), interactive: false });
@@ -249,6 +262,9 @@
   // a notice from a tab in the background: desktop browsers only, a phone puts the tab to sleep
   const canNotify = () => "Notification" in window && !matchMedia("(pointer: coarse)").matches;
 
+  // a request somebody sent on the topic in the last 12 hours, as activity.js read it
+  const askedByOthers = id => !!(window.Activity && typeof window.Activity.asked === "function" && window.Activity.asked(id));
+
   function stateOf(id) {
     if (!Blocks.parse(id)) {
       return "offgrid";
@@ -265,7 +281,7 @@
       }
     }
     const asked = requests[id];
-    if ((asked && Date.now() - asked < REQUEST_LIFE_MS) || (index && index.q[id])) {
+    if ((asked && Date.now() - asked < REQUEST_LIFE_MS) || (index && index.q[id]) || askedByOthers(id)) {
       return "building";
     }
     if (index) {
@@ -469,19 +485,30 @@
       requestAnimationFrame(() => {
         frameDue = false;
         update();
+        keepOverview();
       });
     }
   });
 
+  let outlinesGone = 0;
+
+  // The block on the map gets its outline too: its frame covers it, and a drag that takes the
+  // frame off a built block finds the outline already there.
   function drawOutlines() {
+    clearTimeout(outlinesGone);
+    if (index && map.getZoom() < OUTLINE_ZOOM) {
+      // the pane fades out first, over the overview fading in
+      outlinesGone = setTimeout(() => outlines.clearLayers(), reduced ? 0 : FADE_MS);
+      return;
+    }
     outlines.clearLayers();
-    if (!index || map.getZoom() < OUTLINE_ZOOM) {
+    if (!index) {
       return;
     }
     const view = map.getBounds().pad(0.3);
     let n = 0;
     for (const id of Object.keys(index.b)) {
-      if (id === cur || !Blocks.parse(id)) {
+      if (!Blocks.parse(id)) {
         continue;
       }
       const [s, w, north, e] = Blocks.bounds(id);
@@ -494,6 +521,272 @@
     }
   }
 
+  /* ---------- built blocks far out ---------- */
+
+  // Below OUTLINE_ZOOM every built block stays on the map, drawn on one canvas: a block wide
+  // enough on screen as its own frame, smaller ones gathered on a grid of the screen, alone as a
+  // small frame and in a crowd as a plate with the count. Leaflet's canvas renderer keeps the
+  // canvas with the map through a drag and a zoom, and clears and redraws it after each move:
+  // its _draw (and _ctx, _bounds, _update; Leaflet 1.9.4 in vendor/) is ours. The canvas takes
+  // no pointer events, the map's click finds the marks.
+  const far = new (L.Canvas.extend({ _draw: () => drawOverview() }))({ pane: "overview", padding: FAR_PAD });
+  map.addLayer(far);
+  let built = [];           // {id, x0, y0, x1, y1, w10}: the bounds as Web Mercator in 0..1, north-west
+                            // first, and the width a 10 km block has there
+  let builtKm2 = 0;
+  let builtBox = null;      // LatLngBounds of all of them
+  let marks = [];           // what drawOverview drew, in world pixels at marksZoom
+  let marksZoom = -1;
+
+  const mercX = lon => (lon + 180) / 360;
+  const mercY = lat => 0.5 - Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / (2 * Math.PI);
+
+  // once for each block list: the index is hostile, only ids on the grid count
+  function collectBuilt() {
+    built = [];
+    builtKm2 = 0;
+    builtBox = null;
+    for (const id of Object.keys(index.b)) {
+      const b = Blocks.parse(id);
+      if (!b) {
+        continue;
+      }
+      const [s, w, n, e] = Blocks.bounds(id);
+      built.push({ id, x0: mercX(w), y0: mercY(n), x1: mercX(e), y1: mercY(s), w10: (mercX(e) - mercX(w)) * 10 / b.size });
+      builtKm2 += b.size * b.size;
+      builtBox = builtBox ? builtBox.extend([[s, w], [n, e]]) : L.latLngBounds([[s, w], [n, e]]);
+    }
+    const text = fill(built.length === 1 ? T.built1 : T.built, { n: built.length.toLocaleString("en-US"), km: builtKm2.toLocaleString("en-US") });
+    $("builtText").textContent = text;
+    $("builtBtn").setAttribute("aria-label", fill(T.builtShow, { text }));
+    $("built").hidden = !built.length;
+  }
+
+  function microWidth(text) {
+    let x = -1;
+    for (const ch of text) {
+      x += (MICRO[ch] ? +MICRO[ch].split(":")[0] : 3) + 1;
+    }
+    return x;
+  }
+
+  function microDraw(ctx, text, x, y, scale) {
+    for (const ch of text) {
+      const g = MICRO[ch];
+      if (!g) {
+        x += 4 * scale;
+        continue;
+      }
+      const [w, hex] = g.split(":");
+      for (let r = 0; r < 7; r++) {
+        const bits = parseInt(hex.substr(r * 2, 2), 16);
+        for (let i = 0; i < +w; i++) {
+          if (bits & (1 << (+w - 1 - i))) {
+            ctx.fillRect(x + i * scale, y + r * scale, scale, scale);
+          }
+        }
+      }
+      x += (+w + 1) * scale;
+    }
+  }
+
+  const countText = n => (n < 1000 ? String(n) : Math.floor(n / 1000) + "K");
+  // the width of a mark with its halo: the small frame alone, a plate with the count
+  const markWidth = n => (n > 1 ? microWidth(countText(n)) * 2 + 14 : 16);
+
+  function drawOverview() {
+    const ctx = far._ctx;
+    const box = far._bounds;
+    if (!ctx || !box) {
+      return;
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.restore();
+    marks = [];
+    const z = map.getZoom();
+    marksZoom = z;
+    // one zoom past the outlines, so that the overview has something to fade out with
+    if (!built.length || z > OUTLINE_ZOOM) {
+      return;
+    }
+    const W = 256 * Math.pow(2, z);
+    const o = map.getPixelOrigin();
+    // the canvas in world pixels, and a mark's width more: a plate may hang over its edge
+    const minX = box.min.x + o.x - FAR_CELL_PX;
+    const maxX = box.max.x + o.x + FAR_CELL_PX;
+    const minY = box.min.y + o.y - FAR_CELL_PX;
+    const maxY = box.max.y + o.y + FAR_CELL_PX;
+    const cells = new Map();
+    const feet = [];
+    for (const k of built) {
+      const x0 = k.x0 * W;
+      const x1 = k.x1 * W;
+      const y0 = k.y0 * W;
+      const y1 = k.y1 * W;
+      if (x1 < minX || x0 > maxX || y1 < minY || y0 > maxY) {
+        continue;
+      }
+      // by the width of a 10 km block, so that the two sizes in one place are drawn alike
+      if (k.w10 * W >= FOOT_PX) {
+        if (feet.length < MAX_FEET) {
+          feet.push([Math.round(x0), Math.round(y0), Math.round(x1), Math.round(y1), k.id]);
+        }
+        continue;
+      }
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2;
+      const key = Math.floor(cx / FAR_CELL_PX) * 1e6 + Math.floor(cy / FAR_CELL_PX);
+      const c = cells.get(key);
+      if (c) {
+        c.n += 1;
+        c.sx += cx;
+        c.sy += cy;
+        c.x0 = Math.min(c.x0, x0);
+        c.y0 = Math.min(c.y0, y0);
+        c.x1 = Math.max(c.x1, x1);
+        c.y1 = Math.max(c.y1, y1);
+      } else {
+        cells.set(key, { n: 1, sx: cx, sy: cy, id: k.id, x0, y0, x1, y1 });
+      }
+    }
+
+    // blocks as themselves: all the halos first, so that no halo cuts the ink of a neighbour
+    for (const [width, colour] of [[4, "#fff"], [2, "#000"]]) {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = colour;
+      ctx.beginPath();
+      for (const [x0, y0, x1, y1] of feet) {
+        ctx.rect(x0 - o.x, y0 - o.y, x1 - x0, y1 - y0);
+      }
+      ctx.stroke();
+    }
+    for (const [x0, y0, x1, y1, id] of feet) {
+      marks.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, hw: (x1 - x0) / 2 + 2, hh: (y1 - y0) / 2 + 2, id, foot: true });
+    }
+
+    // two cells side by side may put their marks on one another: the bigger takes the other in
+    const kept = [];
+    for (const c of [...cells.values()].sort((a, b) => b.n - a.n)) {
+      const x = c.sx / c.n;
+      const y = c.sy / c.n;
+      c.w = markWidth(c.n);
+      const k = kept.find(m => Math.abs(m.sx / m.n - x) < (m.w + c.w) / 2 + 2 && Math.abs(m.sy / m.n - y) < 28);
+      if (!k) {
+        kept.push(c);
+        continue;
+      }
+      k.n += c.n;
+      k.w = markWidth(k.n);
+      k.sx += c.sx;
+      k.sy += c.sy;
+      k.x0 = Math.min(k.x0, c.x0);
+      k.y0 = Math.min(k.y0, c.y0);
+      k.x1 = Math.max(k.x1, c.x1);
+      k.y1 = Math.max(k.y1, c.y1);
+    }
+
+    // a lone small block: the frame of the swatch; a crowd: a plate with the count, on top
+    const crowds = [];
+    for (const c of kept) {
+      const x = Math.round(c.sx / c.n);
+      const y = Math.round(c.sy / c.n);
+      if (c.n > 1) {
+        crowds.push([x, y, c]);
+        continue;
+      }
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(x - o.x - 8, y - o.y - 8, 16, 16);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(x - o.x - 6, y - o.y - 6, 12, 12);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(x - o.x - 3, y - o.y - 3, 6, 6);
+      marks.push({ x, y, hw: 8, hh: 8, id: c.id });
+    }
+    for (const [x, y, c] of crowds) {
+      const text = countText(c.n);
+      const w = c.w - 4;
+      const left = x - o.x - Math.floor(w / 2);
+      const top = y - o.y - 11;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(left - 2, top - 2, w + 4, 26);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(left, top, w, 22);
+      ctx.fillStyle = "#fff";
+      microDraw(ctx, text, left + 5, top + 4, 2);
+      marks.push({ x, y, hw: w / 2 + 2, hh: 13, n: c.n, box: [c.x0, c.y0, c.x1, c.y1] });
+    }
+  }
+
+  // A long drag runs off the drawn canvas: draw it again around the view. Called from the
+  // rAF of a move, so at most once a frame, and only when the view leaves the canvas.
+  function keepOverview() {
+    const box = far._bounds;
+    if (!box || !built.length || map.getZoom() >= OUTLINE_ZOOM || map._animatingZoom) {
+      return;
+    }
+    const o = map.getPixelOrigin();
+    const view = map.getPixelBounds();
+    if (!box.contains(L.bounds(view.min.subtract(o), view.max.subtract(o)))) {
+      far._update();
+    }
+  }
+
+  // the mark under a point, the nearest to its middle; plates and small frames before the blocks
+  // drawn as themselves, and a tap gets TAP_PX of room around the small ones
+  function markAt(latlng) {
+    const z = map.getZoom();
+    if (z >= OUTLINE_ZOOM || z !== marksZoom || !marks.length) {
+      return null;
+    }
+    const p = map.project(latlng, z);
+    let best = null;
+    let bestD = Infinity;
+    for (const m of marks) {
+      const hw = m.foot ? m.hw : Math.max(m.hw, TAP_PX / 2);
+      const hh = m.foot ? m.hh : Math.max(m.hh, TAP_PX / 2);
+      const dx = Math.abs(p.x - m.x);
+      const dy = Math.abs(p.y - m.y);
+      if (dx <= hw && dy <= hh) {
+        const d = Math.hypot(dx / hw, dy / hh) + (m.foot ? 2 : 0);
+        if (d < bestD) {
+          bestD = d;
+          best = m;
+        }
+      }
+    }
+    return best;
+  }
+
+  // the view that holds these bounds below the plates at the top, between two zooms
+  function showBounds(bounds, low, high) {
+    const z = map.getBoundsZoom(bounds, false, L.point(24, 2 * platesBottom() + 16));
+    pin = null;
+    map.setView(bounds.getCenter(), Math.max(low, Math.min(high, z)), { animate: !reduced });
+  }
+
+  function openMark(m) {
+    if (m.id) {
+      select(m.id);
+      return;
+    }
+    const z = map.getZoom();
+    const nw = map.unproject([m.box[0], m.box[1]], z);
+    const se = map.unproject([m.box[2], m.box[3]], z);
+    showBounds(L.latLngBounds(nw, se), Math.min(z + 1, CROWD_MAX_ZOOM), CROWD_MAX_ZOOM);
+  }
+
+  map.on("mousemove", e => {
+    $("map").classList.toggle("on-mark", !!markAt(e.latlng));
+  });
+
+  $("builtBtn").addEventListener("click", () => {
+    if (builtBox) {
+      showBounds(builtBox, map.getMinZoom(), OUTLINE_ZOOM - 1);
+    }
+  });
+
   map.on("moveend", () => {
     if (!booted) {
       return;     // the first moveend comes before the layers are on the map
@@ -501,6 +794,7 @@
     update();
     fitPlates();
     drawOutlines();
+    $("stage").classList.toggle("far", map.getZoom() < OUTLINE_ZOOM);
     render();
     const c = map.getCenter();
     store.set("mm.view", { lat: c.lat, lon: c.lng, z: map.getZoom(), size });
@@ -517,17 +811,36 @@
 
   /* ---------- moving to a place ---------- */
 
+  // How far down the map the plates at the top reach: the brand without its line of built blocks
+  // (that line is there only zoomed out), and the room activity.css keeps under it for the plate
+  // of requests (--act-room, set before activity.js has drawn that plate).
+  function platesBottom() {
+    const brand = document.querySelector(".brand");
+    const line = $("built");
+    let low = brand.offsetTop + brand.offsetHeight;
+    if (line.offsetHeight) {
+      low -= line.offsetHeight + parseFloat(getComputedStyle(line).marginTop);
+    }
+    return low + (parseFloat(getComputedStyle($("stage")).getPropertyValue("--act-room")) || 0);
+  }
+
+  // the plates under the brand (activity.js, #alerts) follow its real height through --brand-b
+  new ResizeObserver(() => {
+    const brand = document.querySelector(".brand");
+    $("stage").style.setProperty("--brand-b", brand.offsetTop + brand.offsetHeight + "px");
+  }).observe(document.querySelector(".brand"));
+
   function fitZoom(id, extra) {
     const [s, w, n, e] = Blocks.bounds(id);
     const box = L.latLngBounds([[s, w], [n, e]]);
     if (extra) {
       box.extend(extra);
     }
-    // centred on the map, so the plate at the top costs its height twice
-    const plate = document.querySelector(".brand").getBoundingClientRect().height;
+    // centred on the map, so the plates at the top cost their height twice
+    const plates = platesBottom();
     // and the zoom is for the map behind the sheet, not the strip the open sheet leaves
     const hidden = open ? $("sheet").offsetHeight - parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--peek")) : 0;
-    return Math.min(map.getBoundsZoom(box, false, L.point(24, 2 * plate + 32 - hidden)), 14);
+    return Math.min(map.getBoundsZoom(box, false, L.point(24, 2 * plates + 16 - hidden)), 14);
   }
 
   function select(id, extra) {
@@ -575,6 +888,11 @@
   map.on("click", e => {
     if (open && !wide) {
       setOpen(false);
+      return;
+    }
+    const mark = markAt(e.latlng);
+    if (mark) {
+      openMark(mark);
       return;
     }
     if (index && map.getZoom() >= OUTLINE_ZOOM) {
@@ -647,6 +965,7 @@
       }
       indexFailed = false;
       lastCheck = Date.now();
+      collectBuilt();
       settleRequests();
     } catch (e) {
       indexFailed = true;       // a list from before stays good enough
@@ -656,7 +975,9 @@
     if (cur) {
       render();
       drawOutlines();
+      drawOverview();
     }
+    document.dispatchEvent(new Event("mm:index"));   // hook for activity.js
   }
 
   // a request that got its answer leaves the list, and the answer is said once
@@ -725,6 +1046,14 @@
   // published. Anyone can write there, so a message only changes the wording of the wait and
   // makes the page read the block list again: the list alone says a block is ready.
   function listen() {
+    // hook for activity.js: its one stream carries this topic too and hands it over below
+    if (window.Activity && window.Activity.carries()) {
+      if (live) {
+        live.close();
+        live = null;
+      }
+      return;
+    }
     if (!hasWaiting() || !("EventSource" in window)) {
       if (live) {
         live.close();
@@ -1339,6 +1668,37 @@
     }
   }
 
+  /* ---------- hook for activity.js (live requests on the map) ---------- */
+
+  // What activity.js may use of this page, and nothing more. It loads after this file.
+  window.MMPage = {
+    map,
+    reduced,
+    microSvg,
+    index: () => index,
+    // the plates and small frames of built blocks on the overview canvas, in world pixels at the
+    // zoom of the map; empty when the canvas is not for this zoom
+    builtMarks: () => (marksZoom === map.getZoom() && map.getZoom() < OUTLINE_ZOOM
+      ? marks.filter(m => !m.foot).map(m => ({ x: m.x, y: m.y, hw: m.hw, hh: m.hh })) : []),
+    select: id => select(id),
+    reload: () => loadIndex(),
+    relisten: () => listen(),
+    // a message of the status topic, already checked by activity.js; read as listen() reads it
+    status(ev, at) {
+      const first = Math.min(...Object.keys(requests).filter(waits).map(id => requests[id]));
+      if (at >= first) {
+        hint(ev, at);
+      }
+    },
+  };
+
+  // the set of blocks activity.js knows as requested has changed: the sheet may say otherwise now
+  document.addEventListener("mm:activity", () => {
+    if (booted && cur) {
+      render();
+    }
+  });
+
   /* ---------- start ---------- */
 
   function start() {
@@ -1366,6 +1726,7 @@
       }
     }
     booted = true;
+    $("stage").classList.toggle("far", map.getZoom() < OUTLINE_ZOOM);
     update();
     setOpen(false);
     renderRequests();
